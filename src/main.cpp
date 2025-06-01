@@ -62,6 +62,8 @@ void setup() {
   pinMode(2, OUTPUT);  
   pinMode(4, OUTPUT);
   pinMode(23, OUTPUT);      
+
+  pinMode(26, INPUT);
 }
 
 
@@ -91,38 +93,38 @@ void loop() {
 
       // Control devices based on the received channel
       switch (CH) {
-        /*
+        
         case 1: // LED control
           digitalWrite(2, (VAL == 1) ? LOW : HIGH);
           break;
+
         case 2: // Servo 1
           servo1.write(VAL);
           break;
-        */
+        
         case 3: // Servo 2
           servo2.write(VAL);
           break;
+
         case 4: // Motor 1
           duty = (VAL / 127.5f) - 1.0f;
           MotorDriver_setSpeed(MD1, duty);
           break;
-        /*
-          case 5: // Motor 2
+        
+        case 5: // Motor 2
           duty = (VAL / 127.5f) - 1.0f;
           MotorDriver_setSpeed(MD2, duty);
           break;
-        */
+        
       }
       printf("%f\n\r",duty);
 
     }
-
-    /*
-    int psd = analogRead(26);
+    
+    int psd = analogRead(39);
     float dist = 1 / (float)psd * 30000;  // Conversion of analogue values to cm
     int dist_int = (int)dist;
-    controller.write_data(5,dist_int);
-    */
+    controller.write_data(6,dist_int);
 
   }
   delay(50);  // Add a small delay to reduce the loop frequency
