@@ -6,10 +6,28 @@ UGOKU_Pad_Controller controller;      // Instantiate the UGOKU Pad Controller ob
 uint8_t CH;                           // Variable to store the channel number
 uint8_t VAL;                          // Variable to store the value for the servo control
 
-bool isConnected = false;             // Boolean flag to track BLE connection status
+// Define the pins
+#define PIN_SERVO_1 14                 // Pin number for the servo
+#define PIN_SERVO_2 27                 // Pin number for the servo
+#define PIN_ANALOG_READ 26             // Pin number for the analog input
+#define PIN_LED_1 2
+#define PIN_LED_2 4
+#define PIN_LED_3 23 // Pin number for the LED
 
 Servo servo1;                         // Create a Servo object
 Servo servo2;                         // Create a Servo object
+
+bool isConnected = false;             // Boolean flag to track BLE connection status
+
+// Track last read channel/value to avoid flooding Serial output
+uint8_t lastPrintedCh  = 255;
+uint8_t lastPrintedVal = 255;
+
+// Default “center” position for joystick
+uint8_t stick_1 = 90;
+uint8_t slider_3 = 90;
+uint8_t stick_4 = 90;
+uint8_t stick_5 = 90;
 
 // Store previous values to detect changes
 int lastCH = -1;
@@ -24,8 +42,8 @@ void onDeviceConnect() {
   isConnected = true;                   // Set the connection flag to true
 
   // Attach the servo to the defined pin, with pulse range between 500 to 2500 microseconds
-  servo1.attach(14, 500, 2500);  
-  servo2.attach(27, 500, 2500); 
+  servo1.attach(PIN_SERVO_1, 500, 2500);  
+  servo2.attach(PIN_SERVO_2, 500, 2500); 
       
   digitalWrite(2, HIGH);
 }
@@ -40,6 +58,7 @@ void onDeviceDisconnect() {
   servo2.detach(); 
 }
 
+
 void setup() {
   Serial.begin(115200);               // Initialize the serial communication with a baud rate of 115200
 
@@ -49,8 +68,6 @@ void setup() {
   // Set callback functions for when a device connects and disconnects
   controller.setOnConnectCallback(onDeviceConnect);   // Function called on device connection
   controller.setOnDisconnectCallback(onDeviceDisconnect);  // Function called on device disconnection
-
-  Serial.println("Waiting for a device to connect...");  // Print waiting message
 
   MotorDriver_begin();
 
@@ -62,8 +79,9 @@ void setup() {
   pinMode(2, OUTPUT);  
   pinMode(4, OUTPUT);
   pinMode(23, OUTPUT);      
-
   pinMode(26, INPUT);
+
+  Serial.println("Waiting for a device to connect...");  // Print waiting message
 }
 
 
@@ -72,60 +90,59 @@ void loop() {
   // Only run if a device is connected via BLE
   
   if (isConnected) {
-    controller.read_data();             // Read data from the BLE device
-    CH = controller.get_ch();           // Get the channel number from the controller
-    VAL = controller.get_val();         // Get the value (servo position or other data)
 
-    // Only process if the value has changed
-    if (CH != lastCH || VAL != lastVAL) {
-      lastCH = CH;
-      lastVAL = VAL;
+    uint8_t err = controller.read_data();
+    
+    if (err == no_err) {
+      uint8_t pairs = controller.getLastPairsCount();
 
-      // Debug output (only prints if changed)
-      Serial.print("Channel: ");
-      Serial.print(CH);
-      Serial.print("  Value: ");
-      Serial.println(VAL);
+      // If there is at least one pair, find out which channels changed
+      if (pairs > 0) {
 
-      digitalWrite(4, 1);
-      digitalWrite(23, 1);
-      
+        uint8_t ch1Val = controller.getDataByChannel(1);
+        if (ch1Val != 0xFF && ch1Val != lastPrintedVal) {
+          lastPrintedVal = ch1Val;
+          digitalWrite(PIN_LED_1, (ch1Val == 1) ? LOW : HIGH);
+        }
 
-      // Control devices based on the received channel
-      switch (CH) {
-        
-        case 1: // LED control
-          digitalWrite(2, (VAL == 1) ? LOW : HIGH);
-          break;
+        uint8_t ch2Val = controller.getDataByChannel(2);
+        if (ch2Val != 0xFF && ch2Val != stick_1) {
+          stick_1 = ch2Val;
+        }
 
-        case 2: // Servo 1
-          servo1.write(VAL);
-          break;
-        
-        case 3: // Servo 2
-          servo2.write(VAL);
-          break;
+        uint8_t ch3Val = controller.getDataByChannel(3);
+        if (ch3Val != 0xFF && ch3Val != slider_3) {
+          slider_3 = ch3Val;
+        }
 
-        case 4: // Motor 1
-          duty = (VAL / 127.5f) - 1.0f;
-          MotorDriver_setSpeed(MD1, duty);
-          break;
-        
-        case 5: // Motor 2
-          duty = (VAL / 127.5f) - 1.0f;
-          MotorDriver_setSpeed(MD2, duty);
-          break;
-        
+        uint8_t ch4Val = controller.getDataByChannel(4);
+        if (ch3Val != 0xFF && ch3Val != stick_4) {
+          stick_4 = ch3Val;
+        }
+
+        uint8_t ch5Val = controller.getDataByChannel(5);
+        if (ch3Val != 0xFF && ch3Val != stick_5) {
+          stick_5 = ch3Val;
+
+        }
+      } else if (err == cs_err) {
+        Serial.println("Checksum error on incoming packet");
+      } else if (err == data_err) {
+        Serial.println("Incoming packet length != 19");
       }
-      printf("%f\n\r",duty);
+
+      servo1.write(stick_1);
+      servo2.write(slider_3);
+
+      MotorDriver_setSpeed(MD1, (stick_4 / 127.5f) - 1.0f);
+      MotorDriver_setSpeed(MD2, (stick_5 / 127.5f) - 1.0f);
+      
+      int psd = analogRead(39);
+      float dist = 1 / (float)psd * 30000;  // Conversion of analogue values to cm
+      int dist_int = (int)dist;
+      controller.write_data(6,dist_int);
 
     }
-    
-    int psd = analogRead(39);
-    float dist = 1 / (float)psd * 30000;  // Conversion of analogue values to cm
-    int dist_int = (int)dist;
-    controller.write_data(6,dist_int);
-
+    delay(50);  // Add a small delay to reduce the loop frequency
   }
-  delay(50);  // Add a small delay to reduce the loop frequency
 }
